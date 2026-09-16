@@ -1,0 +1,7 @@
+<script type="module">
+  import imglyRemoveBackground from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.0/+esm";
+
+  const imageBlob = await imglyRemoveBackground(imageElement.src);
+  const url = URL.createObjectURL(imageBlob);
+  outputImage.src = url;
+</script>
