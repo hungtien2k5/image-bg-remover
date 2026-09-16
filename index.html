@@ -86,11 +86,10 @@
       padding: 50px 20px;
       text-align: center;
       cursor: pointer;
-      transition: all 0.2s ease;
       background: rgba(15, 23, 42, 0.4);
     }
 
-    .upload-zone:hover, .upload-zone.dragover {
+    .upload-zone.dragover {
       border-color: var(--primary);
       background: rgba(99, 102, 241, 0.05);
     }
@@ -113,7 +112,9 @@
       font-size: 0.95rem;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      justify-content: center;
+      text-decoration: none;
+      user-select: none;
       transition: background 0.2s;
     }
 
@@ -277,8 +278,10 @@
       <p style="color: var(--text-sub); margin: 8px 0 18px; font-size: 0.9rem;">
         Hoặc dán trực tiếp bằng phím tắt <b>Ctrl + V</b>
       </p>
-      <button class="btn" onclick="document.getElementById('fileInput').click()">Chọn ảnh từ thiết bị</button>
-      <input type="file" id="fileInput" accept="image/*" style="display: none;" />
+      
+      <!-- Sử dụng thẻ label kết nối trực tiếp với input file -->
+      <label for="fileInput" class="btn">Chọn ảnh từ thiết bị</label>
+      <input type="file" id="fileInput" accept="image/png, image/jpeg, image/jpg, image/webp" style="display: none;" />
     </div>
 
     <div class="loading-state" id="loadingState">
@@ -286,7 +289,7 @@
       <div class="progress-bar-container">
         <div class="progress-bar" id="progressBar"></div>
       </div>
-      <p id="statusText" style="color: var(--text-sub); font-size: 0.85rem;">Đang khởi động AI Engine...</p>
+      <p id="statusText" style="color: var(--text-sub); font-size: 0.85rem;">Đang khởi tạo AI Model (lần đầu có thể mất 15-30 giây)...</p>
     </div>
 
     <div class="result-state" id="resultState">
@@ -315,8 +318,6 @@
   </main>
 
   <script type="module">
-    import imglyRemoveBackground from 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.7/+esm';
-
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const loadingState = document.getElementById('loadingState');
@@ -334,18 +335,25 @@
 
     let processedBlobUrl = null;
 
+    // Kéo thả file
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('dragover');
-      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleFile(e.dataTransfer.files[0]);
+      }
     });
 
+    // Chọn file từ máy tính
     fileInput.addEventListener('change', (e) => {
-      if (e.target.files[0]) handleFile(e.target.files[0]);
+      if (e.target.files && e.target.files[0]) {
+        handleFile(e.target.files[0]);
+      }
     });
 
+    // Dán phím tắt Ctrl + V
     window.addEventListener('paste', (e) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -359,31 +367,38 @@
 
     async function handleFile(file) {
       if (!file.type.startsWith('image/')) {
-        alert('Vui lòng chọn file định dạng ảnh hợp lệ!');
+        alert('Vui lòng chọn file hình ảnh (JPG, PNG, WEBP...)');
         return;
       }
 
       dropZone.style.display = 'none';
       loadingState.style.display = 'block';
       resultState.style.display = 'none';
+      progressBar.style.width = '15%';
 
       const originalUrl = URL.createObjectURL(file);
       beforeImg.src = originalUrl;
 
       try {
-        const config = {
+        statusText.innerText = 'Đang tải AI Engine từ máy chủ (lần đầu mất vài giây)...';
+        
+        // Tải động thư viện AI
+        const { default: imglyRemoveBackground } = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.7/+esm');
+        
+        progressBar.style.width = '40%';
+        statusText.innerText = 'Đang phân tích và bóc tách phông nền...';
+
+        const blob = await imglyRemoveBackground(file, {
           publicPath: 'https://staticimgly.com/@imgly/background-removal-data/1.5.7/dist/',
           progress: (key, current, total) => {
             if (total > 0) {
               const pct = Math.round((current / total) * 100);
               progressBar.style.width = `${pct}%`;
-              statusText.innerText = `Đang nạp mô hình (${key.split(':')[0]}): ${pct}%`;
+              statusText.innerText = `Đang xử lý (${key.split(':')[0]}): ${pct}%`;
             }
           }
-        };
+        });
 
-        const blob = await imglyRemoveBackground(file, config);
-        
         if (processedBlobUrl) URL.revokeObjectURL(processedBlobUrl);
         processedBlobUrl = URL.createObjectURL(blob);
         afterImg.src = processedBlobUrl;
@@ -392,7 +407,7 @@
         resultState.style.display = 'flex';
       } catch (err) {
         console.error(err);
-        alert('Có lỗi xảy ra trong quá trình xử lý ảnh: ' + err.message);
+        alert('Lỗi xử lý ảnh: ' + err.message + '\n\nHãy kiểm tra xem mạng có chặn CDN hoặc bật F12 xem Console.');
         resetState();
       }
     }
@@ -407,16 +422,16 @@
       if (!processedBlobUrl) return;
       const a = document.createElement('a');
       a.href = processedBlobUrl;
-      a.download = `removed-bg-${Date.now()}.png`;
+      a.download = `tach-nen-${Date.now()}.png`;
       a.click();
     });
 
     window.setBg = (color) => {
       if (color === 'checker') {
-        previewBox.className = 'previewBox bg-checker';
+        previewBox.className = 'preview-box bg-checker';
         previewBox.style.backgroundColor = '';
       } else {
-        previewBox.className = 'previewBox';
+        previewBox.className = 'preview-box';
         previewBox.style.backgroundColor = color;
       }
     };
